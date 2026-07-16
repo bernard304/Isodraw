@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Iso Piping — Relevé Chantier</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f6d99">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --bg:#eef1f3;
+    --panel:#ffffff;
+    --panel2:#f4f6f8;
+    --line:#d7dde3;
+    --text:#1c2530;
+    --dim:#6b7684;
+    --accent:#0f6d99;
+    --accent2:#2e9e5b;
+    --danger:#c4453f;
+    --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+    --sans:-apple-system,system-ui,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden;}
+  #app{display:flex;flex-direction:column;height:100%;}
+
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);
+    flex-wrap:wrap;gap:8px;
+  }
+  header h1{font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0;}
+  header .sub{font-size:11px;color:var(--dim);font-family:var(--mono);}
+
+  .toolbar{display:flex;gap:6px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  button{
+    background:var(--panel2);color:var(--text);border:1px solid var(--line);
+    padding:9px 12px;border-radius:6px;font-size:12.5px;cursor:pointer;
+    font-family:var(--sans);white-space:nowrap;
+  }
+  button:active{transform:translateY(1px);}
+  button.active{background:var(--accent);color:#ffffff;border-color:var(--accent);font-weight:600;}
+  button.primary{background:var(--accent2);color:#ffffff;border-color:var(--accent2);font-weight:600;}
+  button.ghost{background:transparent;}
+
+  main{flex:1;display:flex;min-height:0;}
+  #canvasWrap{flex:1;position:relative;background:
+      radial-gradient(circle at 1px 1px, #c3c9cf 1px, transparent 0) 0 0/40px 40px, var(--bg);
+    overflow:hidden;touch-action:none;}
+  svg{width:100%;height:100%;display:block;cursor:crosshair;touch-action:none;}
+
+  aside{
+    width:300px;background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;flex-shrink:0;
+  }
+  aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:12px 14px 6px;}
+  .segList{flex:1;overflow-y:auto;padding:0 10px;}
+  .seg{
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;margin-bottom:8px;font-family:var(--mono);font-size:11.5px;
+  }
+  .seg .row{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;}
+  .seg label{color:var(--dim);font-size:10.5px;}
+  .seg input{
+    background:#ffffff;border:1px solid var(--line);color:var(--text);
+    border-radius:4px;padding:4px 6px;width:70px;font-family:var(--mono);font-size:11.5px;
+  }
+  .seg .del{color:var(--danger);cursor:pointer;font-size:15px;line-height:1;background:none;border:none;padding:2px 6px;}
+  .totals{
+    padding:12px 14px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;
+    display:flex;flex-direction:column;gap:4px;background:var(--panel2);
+  }
+  .totals .row{display:flex;justify-content:space-between;}
+  .totals .row b{color:var(--accent);}
+
+  .empty{color:var(--dim);font-size:12px;padding:20px 4px;text-align:center;}
+
+  #fittingMenu{
+    position:absolute;background:var(--panel2);border:1px solid var(--accent);
+    border-radius:8px;padding:6px;display:none;flex-direction:column;gap:2px;z-index:10;
+    box-shadow:0 6px 20px rgba(0,0,0,.4);
+  }
+  #fittingMenu button{text-align:left;}
+
+  #saveBar{display:flex;gap:6px;padding:8px 14px;border-top:1px solid var(--line);}
+  #saveBar input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px;font-family:var(--mono);font-size:12px;}
+
+  #toast{
+    position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+    background:var(--accent2);color:#ffffff;padding:8px 16px;border-radius:6px;
+    font-size:12.5px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s;z-index:50;
+  }
+  #toast.show{opacity:1;}
+
+  @media (max-width:760px){
+    main{flex-direction:column;}
+    aside{width:100%;max-height:38vh;border-left:none;border-top:1px solid var(--line);}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div>
+      <h1>Iso Piping · Relevé Chantier</h1>
+      <div class="sub" id="statusLine">Cliquez un nœud de départ, puis un nœud d'arrivée</div>
+    </div>
+    <div class="sub">Grille : <span id="unitLabel">1 case = 1.00 m</span></div>
+  </header>
+
+  <div class="toolbar">
+    <button id="modeDraw" class="active">✏️ Tracer ligne</button>
+    <button id="modeFit">🔧 Placer symbole</button>
+    <button id="undoBtn">↩ Annuler segment</button>
+    <button id="clearBtn" class="ghost">🗑 Tout effacer</button>
+    <span style="flex:1"></span>
+    <button id="unitBtn" class="ghost">Unité grille…</button>
+    <button id="dxfBtn">⬇ Export DXF</button>
+  </div>
+
+  <main>
+    <div id="canvasWrap">
+      <svg id="svg" viewBox="0 0 1000 700"></svg>
+      <div id="fittingMenu"></div>
+    </div>
+
+    <aside>
+      <h2>Lignes tracées</h2>
+      <div class="segList" id="segList"><div class="empty">Aucune ligne. Tracez un premier segment sur la grille.</div></div>
+      <div class="totals">
+        <div class="row"><span>Longueur totale</span><b id="totLen">0.00 m</b></div>
+        <div class="row"><span>Soudures totales</span><b id="totWeld">0</b></div>
+        <div class="row"><span>Symboles placés</span><b id="totFit">0</b></div>
+      </div>
+      <div id="saveBar">
+        <input id="projName" placeholder="nom du projet" value="chantier-1">
+        <button id="saveBtn" class="primary">💾 Enregistrer</button>
+        <button id="loadBtn">📂 Charger</button>
+      </div>
+    </aside>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  const svg = document.getElementById('svg');
+  const NS = 'http://www.w3.org/2000/svg';
+  const UNIT_PX = 40;
+  let unitMeters = 1.0;
+
+  // 6 isometric directions (screen space, y-down)
+  const DIRS = [
+    {dx:0,dy:-1,label:'V+'}, {dx:0,dy:1,label:'V-'},
+    {dx:0.8660,dy:-0.5,label:'A+'}, {dx:-0.8660,dy:0.5,label:'A-'},
+    {dx:-0.8660,dy:-0.5,label:'B+'}, {dx:0.8660,dy:0.5,label:'B-'}
+  ];
+
+  const origin = {x:500,y:380};
+  let nodes = new Map();   // key "x,y" -> {x,y}
+  let segments = [];       // {x1,y1,x2,y2,steps,length,dn,welds}
+  let fittings = [];       // {x,y,type}
+  let mode = 'draw';
+  let startNode = null;
+  let segCounter = 0;
+
+  const FIT_TYPES = {
+    elbow90:{label:'Coude 90°', symbol:'coude'},
+    elbow45:{label:'Coude 45°', symbol:'coude'},
+    reduction:{label:'Réduction', symbol:'reduc'},
+    tee:{label:'Té', symbol:'tee'},
+    valve:{label:'Vanne', symbol:'valve'},
+    flange:{label:'Bride', symbol:'flange'}
+  };
+
+  function key(x,y){ return Math.round(x)+','+Math.round(y); }
+
+  function addNode(x,y){
+    const k = key(x,y);
+    if(!nodes.has(k)) nodes.set(k,{x,y});
+    return nodes.get(k);
+  }
+
+  function seedGrid(){
+    const A = {x:0.8660*UNIT_PX, y:-0.5*UNIT_PX};
+    const B = {x:-0.8660*UNIT_PX, y:-0.5*UNIT_PX};
+    for(let i=-9;i<=9;i++){
+      for(let j=-9;j<=9;j++){
+        const x = origin.x + i*A.x + j*B.x;
+        const y = origin.y + i*A.y + j*B.y;
+        if(x>-20 && x<1020 && y>-20 && y<720) addNode(x,y);
+      }
+    }
+  }
+  seedGrid();
+
+  function svgEl(tag, attrs){
+    const e = document.createElementNS(NS, tag);
+    for(const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  function render(){
+    svg.innerHTML = '';
+    // grid dots
+    const gridG = svgEl('g',{});
+    nodes.forEach(n=>{
+      gridG.appendChild(svgEl('circle',{cx:n.x,cy:n.y,r:1.6,fill:'#c3c9cf'}));
+    });
+    svg.appendChild(gridG);
+
+    // segments
+    segments.forEach(s=>{
+      svg.appendChild(svgEl('line',{x1:s.x1,y1:s.y1,x2:s.x2,y2:s.y2,stroke:'#0f6d99',['stroke-width']:3,['stroke-linecap']:'round'}));
+      const mx=(s.x1+s.x2)/2, my=(s.y1+s.y2)/2;
+      const label = svgEl('text',{x:mx,y:my-8,fill:'#6b7684','font-size':10,'font-family':'monospace','text-anchor':'middle'});
+      label.textContent = s.length.toFixed(2)+'m';
+      svg.appendChild(label);
+    });
+
+    // fittings
+    fittings.forEach(f=>{
+      const g = svgEl('g',{});
+      if(f.type.startsWith('elbow')){
+        g.appendChild(svgEl('circle',{cx:f.x,cy:f.y,r:9,fill:'#ffffff',stroke:'#2e9e5b','stroke-width':2}));
+      } else if(f.type==='reduction'){
+        g.appendChild(svgEl('polygon',{points:`${f.x-9},${f.y+7} ${f.x+9},${f.y+7} ${f.x},${f.y-9}`,fill:'#ffffff',stroke:'#2e9e5b','stroke-width':2}));
+      } else if(f.type==='tee'){
+        g.appendChild(svgEl('rect',{x:f.x-8,y:f.y-8,width:16,height:16,fill:'#ffffff',stroke:'#2e9e5b','stroke-width':2}));
+      } else if(f.type==='valve'){
+        g.appendChild(svgEl('polygon',{points:`${f.x-9},${f.y-7} ${f.x+9},${f.y-7} ${f.x-9},${f.y+7} ${f.x+9},${f.y+7}`,fill:'#ffffff',stroke:'#c4453f','stroke-width':2}));
+      } else { // flange
+        g.appendChild(svgEl('rect',{x:f.x-3,y:f.y-9,width:6,height:18,fill:'#9aa4ad'}));
+      }
+      svg.appendChild(g);
+    });
+
+    // start node highlight
+    if(startNode){
+      svg.appendChild(svgEl('circle',{cx:startNode.x,cy:startNode.y,r:7,fill:'none',stroke:'#2e9e5b','stroke-width':2}));
+    }
+
+    renderSegList();
+  }
+
+  function nearestNode(x,y,maxDist){
+    let best=null, bestD=Infinity;
+    nodes.forEach(n=>{
+      const d = Math.hypot(n.x-x,n.y-y);
+      if(d<bestD){bestD=d;best=n;}
+    });
+    if(bestD<=maxDist) return best;
+    return null;
+  }
+
+  function pointerPos(evt){
+    const rect = svg.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    const scale = Math.min(rect.width/vb.width, rect.height/vb.height);
+    const offsetX = (rect.width - vb.width*scale)/2;
+    const offsetY = (rect.height - vb.height*scale)/2;
+    const cx = evt.clientX ?? evt.touches?.[0]?.clientX;
+    const cy = evt.clientY ?? evt.touches?.[0]?.clientY;
+    const x = (cx-rect.left-offsetX)/scale;
+    const y = (cy-rect.top-offsetY)/scale;
+    return {x,y};
+  }
+
+  function handleDrawClick(pos){
+    const near = nearestNode(pos.x,pos.y,28);
+    if(!near) return;
+    if(!startNode){
+      startNode = near;
+      setStatus('Nœud de départ posé — cliquez le nœud d\\'arrivée');
+      render();
+      return;
+    }
+    if(near.x===startNode.x && near.y===startNode.y){ startNode=null; render(); return; }
+
+    // find closest matching direction
+    const vx = near.x-startNode.x, vy = near.y-startNode.y;
+    const dist = Math.hypot(vx,vy);
+    let bestDir=null, bestDot=-Infinity;
+    DIRS.forEach(d=>{
+      const dot = (vx/dist)*d.dx + (vy/dist)*d.dy;
+      if(dot>bestDot){bestDot=dot;bestDir=d;}
+    });
+    const steps = Math.max(1, Math.round(dist/UNIT_PX));
+    const ex = startNode.x + bestDir.dx*UNIT_PX*steps;
+    const ey = startNode.y + bestDir.dy*UNIT_PX*steps;
+    const endNode = addNode(ex,ey);
+
+    segCounter++;
+    segments.push({
+      id:segCounter, x1:startNode.x,y1:startNode.y,x2:endNode.x,y2:endNode.y,
+      steps, length: steps*unitMeters, dn:'DN50', welds:2
+    });
+    startNode = endNode;
+    setStatus('Ligne ajoutée — poursuivez depuis ce nœud, ou re-cliquez dessus pour arrêter');
+    render();
+  }
+
+  function handleFitClick(evt, pos){
+    const near = nearestNode(pos.x,pos.y,28);
+    if(!near) return;
+    openFittingMenu(evt, near);
+  }
+
+  function openFittingMenu(evt, node){
+    const menu = document.getElementById('fittingMenu');
+    menu.innerHTML='';
+    Object.entries(FIT_TYPES).forEach(([k,v])=>{
+      const b = document.createElement('button');
+      b.textContent = v.label;
+      b.onclick = ()=>{
+        fittings.push({x:node.x,y:node.y,type:k});
+        menu.style.display='none';
+        render();
+      };
+      menu.appendChild(b);
+    });
+    const rmBtn = document.createElement('button');
+    rmBtn.textContent = '✕ Fermer';
+    rmBtn.className='ghost';
+    rmBtn.onclick = ()=>{menu.style.display='none';};
+    menu.appendChild(rmBtn);
+
+    const rect = svg.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    const px = rect.left + (node.x/vb.width)*rect.width;
+    const py = rect.top + (node.y/vb.height)*rect.height;
+    menu.style.left = (px-rect.left+10)+'px';
+    menu.style.top = (py-rect.top+10)+'px';
+    menu.style.display='flex';
+  }
+
+  svg.addEventListener('pointerdown', (evt)=>{
+    const pos = pointerPos(evt);
+    if(mode==='draw') handleDrawClick(pos);
+    else handleFitClick(evt,pos);
+  });
+
+  function setStatus(t){ document.getElementById('statusLine').textContent = t; }
+
+  document.getElementById('modeDraw').onclick = ()=>{
+    mode='draw';
+    document.getElementById('modeDraw').classList.add('active');
+    document.getElementById('modeFit').classList.remove('active');
+    setStatus('Cliquez un nœud de départ, puis un nœud d\\'arrivée');
+  };
+  document.getElementById('modeFit').onclick = ()=>{
+    mode='fit';
+    document.getElementById('modeFit').classList.add('active');
+    document.getElementById('modeDraw').classList.remove('active');
+    setStatus('Cliquez un nœud pour y placer un symbole (coude, réduction…)');
+  };
+  document.getElementById('undoBtn').onclick = ()=>{
+    segments.pop();
+    render();
+  };
+  document.getElementById('clearBtn').onclick = ()=>{
+    if(!confirm('Effacer toutes les lignes et symboles ?')) return;
+    segments=[]; fittings=[]; startNode=null; render();
+  };
+  document.getElementById('unitBtn').onclick = ()=>{
+    const v = prompt('Longueur réelle d\\'une case de grille (mètres) :', unitMeters);
+    if(v && !isNaN(parseFloat(v))){
+      unitMeters = parseFloat(v);
+      segments.forEach(s=> s.length = s.steps*unitMeters);
+      document.getElementById('unitLabel').textContent = '1 case = '+unitMeters.toFixed(2)+' m';
+      render();
+    }
+  };
+
+  function renderSegList(){
+    const list = document.getElementById('segList');
+    if(segments.length===0){
+      list.innerHTML = '<div class="empty">Aucune ligne. Tracez un premier segment sur la grille.</div>';
+    } else {
+      list.innerHTML='';
+      segments.forEach(s=>{
+        const div = document.createElement('div');
+        div.className='seg';
+        div.innerHTML = `
+          <div class="row"><span>Ligne #${s.id}</span><button class="del">✕</button></div>
+          <div class="row"><label>Longueur (m)</label><input type="number" step="0.01" value="${s.length.toFixed(2)}" data-f="length"></div>
+          <div class="row"><label>Diamètre</label><input type="text" value="${s.dn}" data-f="dn"></div>
+          <div class="row"><label>Soudures</label><input type="number" step="1" value="${s.welds}" data-f="welds"></div>
+        `;
+        div.querySelector('.del').onclick = ()=>{ segments = segments.filter(x=>x.id!==s.id); render(); };
+        div.querySelectorAll('input').forEach(inp=>{
+          inp.onchange = ()=>{
+            const f = inp.dataset.f;
+            s[f] = f==='dn' ? inp.value : parseFloat(inp.value)||0;
+            renderTotals();
+          };
+        });
+        list.appendChild(div);
+      });
+    }
+    renderTotals();
+  }
+
+  function renderTotals(){
+    const totLen = segments.reduce((a,s)=>a+s.length,0);
+    const totWeld = segments.reduce((a,s)=>a+(s.welds||0),0);
+    document.getElementById('totLen').textContent = totLen.toFixed(2)+' m';
+    document.getElementById('totWeld').textContent = totWeld;
+    document.getElementById('totFit').textContent = fittings.length;
+  }
+
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'), 2200);
+  }
+
+  // ---- Save / Load (persistent artifact storage) ----
+  document.getElementById('saveBtn').onclick = async ()=>{
+    const name = document.getElementById('projName').value.trim() || 'projet';
+    const data = { segments, fittings, unitMeters, nodes:[...nodes.values()] };
+    try{
+      const res = await window.storage.set('project:'+name, JSON.stringify(data), false);
+      toast(res ? '✔ Projet enregistré' : '⚠ Échec de l\\'enregistrement');
+    }catch(e){ toast('⚠ Erreur de sauvegarde'); console.error(e); }
+  };
+  document.getElementById('loadBtn').onclick = async ()=>{
+    const name = document.getElementById('projName').value.trim() || 'projet';
+    try{
+      const res = await window.storage.get('project:'+name, false);
+      if(!res){ toast('Aucun projet trouvé sous ce nom'); return; }
+      const data = JSON.parse(res.value);
+      segments = data.segments||[]; fittings = data.fittings||[]; unitMeters = data.unitMeters||1;
+      document.getElementById('unitLabel').textContent = '1 case = '+unitMeters.toFixed(2)+' m';
+      startNode = null;
+      render();
+      toast('✔ Projet chargé');
+    }catch(e){ toast('Aucun projet trouvé sous ce nom'); }
+  };
+
+  // ---- DXF export ----
+  document.getElementById('dxfBtn').onclick = ()=>{
+    const scale = unitMeters/UNIT_PX; // px -> meters
+    let ents = '';
+    segments.forEach(s=>{
+      const x1=s.x1*scale, y1=-s.y1*scale, x2=s.x2*scale, y2=-s.y2*scale;
+      ents += `0\nLINE\n8\nPROCESS\n10\n${x1.toFixed(3)}\n20\n${y1.toFixed(3)}\n30\n0.0\n11\n${x2.toFixed(3)}\n21\n${y2.toFixed(3)}\n31\n0.0\n`;
+    });
+    fittings.forEach(f=>{
+      const x=f.x*scale, y=-f.y*scale;
+      ents += `0\nCIRCLE\n8\nSYMBOLS\n10\n${x.toFixed(3)}\n20\n${y.toFixed(3)}\n30\n0.0\n40\n0.15\n`;
+    });
+    const dxf = `0\nSECTION\n2\nENTITIES\n${ents}0\nENDSEC\n0\nEOF\n`;
+    const blob = new Blob([dxf], {type:'application/dxf'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (document.getElementById('projName').value.trim()||'projet')+'.dxf';
+    a.click();
+    toast('⬇ Export DXF généré');
+  };
+
+  render();
+})();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW registration failed', e));
+  });
+}
+</script>
+</body>
+</html>
